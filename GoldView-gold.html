@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoldView - Real-time Gold Price Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f6f9; /* Light mode background */
+            color: #333; /* Light mode text color */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Night mode */
+        body.dark-mode {
+            background-color: #2c3e50; /* Night mode background */
+            color: #ecf0f1; /* Night mode text color */
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-top: 20px;
+        }
+
+        body.dark-mode h1 {
+            color: #ecf0f1;
+        }
+
+        #goldPrice {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
+        body.dark-mode #goldPrice {
+            color: #f39c12;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            width: 100%;
+            max-width: 800px;
+            height: 400px;
+        }
+
+        table {
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            border-collapse: collapse;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background-color: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
+        }
+
+        th {
+            background-color: #3498db;
+            color: #fff;
+            text-transform: uppercase;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+
+        tr:hover {
+            background-color: #eaeaea;
+        }
+
+        body.dark-mode table {
+            background-color: #34495e;
+        }
+
+        body.dark-mode th {
+            background-color: #1abc9c;
+        }
+
+        input[type="date"], button {
+            padding: 10px 15px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin: 0 5px;
+            font-size: 16px;
+        }
+
+        input[type="date"] {
+            max-width: 200px;
+        }
+
+        button {
+            background-color: #3498db;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        #toggleMode {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            transition: color 0.3s;
+            color: #f39c12;
+        }
+
+        body.dark-mode #toggleMode {
+            color: #ecf0f1;
+        }
+
+        div {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        iframe {
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            border: 0;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            input[type="date"], button {
+                width: 100%;
+                margin: 10px 0;
+            }
+
+            table, iframe, canvas {
+                width: 100%;
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>GoldView - Real-time Gold Price Dashboard</h1>
+    <p id="goldPrice">Gold Price: Loading...</p>
+    <canvas id="goldChart"></canvas>
+    <div>
+        <label for="startDate">Start Date:</label>
+        <input type="date" id="startDate">
+        <label for="endDate">End Date:</label>
+        <input type="date" id="endDate">
+        <button onclick="fetchHistoricalData()">Fetch Data</button>
+        <button id="toggleMode" title="Toggle Dark Mode"><i class="fas fa-sun"></i></button>
+    </div>
+    <table id="goldPriceTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Price (USD)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Data will be populated here -->
+        </tbody>
+    </table>
+
+    <iframe src="https://docs.google.com/spreadsheets/d/e/2PACX-1vRF9rVmaxP-bcprVkrT4wY7Etk57ZQgZKHfphJaxkU-WfUwegSo_iPlAoYpf3jtqQqX-JJPOz3DxJb-/pubhtml?widget=true&amp;headers=false"></iframe>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon"></script>
+    <script>
+        const API_KEYS = ['goldapi-4oobsslz1chse5-io', 'goldapi-b6fsm0xbbv7q-io'];
+        let apiKeyIndex = 0;
+
+        const BASE_URL = 'https://www.goldapi.io/api/XAU/USD';
+        
+        const goldChart = new Chart(document.getElementById('goldChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Gold Price (USD)',
+                    data: [],
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    borderWidth: 2,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+
+        function fetchData() {
+            const myHeaders = new Headers();
+            myHeaders.append("x-access-token", API_KEYS[apiKeyIndex]);
+            myHeaders.append("Content-Type", "application/json");
+
+            const requestOptions = {
+                method: 'GET',
+                headers: myHeaders,
+                redirect: 'follow'
+            };
+
+            fetch(BASE_URL, requestOptions)
+                .then(response => response.json())
+                .then(result => {
+                    document.getElementById('goldPrice').innerText = `Gold Price: ${result.price} USD`;
+
+                    const currentTime = new Date();
+                    goldChart.data.labels.push(currentTime);
+                    goldChart.data.datasets[0].data.push(result.price);
+                    goldChart.update();
+
+                    apiKeyIndex = (apiKeyIndex + 1) % API_KEYS.length; // Switch between API keys
+                })
+                .catch(error => console.log('error', error));
+        }
+
+        function fetchHistoricalData() {
+            // Add logic for fetching data based on the selected dates
+        }
+
+        setInterval(fetchData, 6000);
+
+        document.getElementById('toggleMode').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+        });
+    </script>
+</body>
+</html>
